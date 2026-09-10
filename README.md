@@ -58,9 +58,17 @@ Opens on `http://localhost:5173` and talks to the backend at
 - **Rejected:** order P300, any quantity ≥ 1 (seeded stock is 0), or order
   P200 with a quantity greater than 10.
 
-> Add your Network tab screenshots here for both the confirmed and rejected
-> requests (request payload + response body) once you've run it against
-> your own Supabase project.
+**Confirmed order — request payload:**
+![confirmed request payload](confirmed-payload.png)
+
+**Confirmed order — response:**
+![confirmed response](confirmed-response.png)
+
+**Rejected order — request payload:**
+![rejected request payload](rejected-payload.png)
+
+**Rejected order — response:**
+![rejected response](rejected-response.png)
 
 ---
 
