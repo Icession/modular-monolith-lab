@@ -1,10 +1,11 @@
 package edu.cit.carcueva.shop;
 
-import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotBlank;
+import java.util.List;
+
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
 
 public record OrderRequest(
-        @NotBlank String productId,
-        @Min(1) int quantity
+        @NotEmpty @Valid List<OrderItemRequest> items
 ) {
 }

@@ -18,12 +18,6 @@ public class Order {
     @Column(name = "order_id")
     private Long orderId;
 
-    @Column(name = "product_id", nullable = false)
-    private String productId;
-
-    @Column(name = "quantity", nullable = false)
-    private int quantity;
-
     @Column(name = "status", nullable = false)
     private String status;
 
@@ -37,9 +31,7 @@ public class Order {
         // JPA
     }
 
-    public Order(String productId, int quantity, String status, String reason) {
-        this.productId = productId;
-        this.quantity = quantity;
+    public Order(String status, String reason) {
         this.status = status;
         this.reason = reason;
         this.createdAt = Instant.now();
@@ -49,16 +41,12 @@ public class Order {
         return orderId;
     }
 
-    public String getProductId() {
-        return productId;
-    }
-
-    public int getQuantity() {
-        return quantity;
-    }
-
     public String getStatus() {
         return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
     }
 
     public String getReason() {
