@@ -359,3 +359,23 @@ button:focus-visible {
   color: var(--slate);
   flex-shrink: 0;
 }
+
+/* ---- Supplier reorders ---- */
+
+.supplier-status {
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+
+.supplier-status--pending {
+  color: var(--amber);
+}
+
+.supplier-status--delivered {
+  color: var(--green);
+}
+
+.supplier-status--failed,
+.supplier-status--needs_attention {
+  color: var(--rust);
+}

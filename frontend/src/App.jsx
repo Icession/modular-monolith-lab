@@ -23,17 +23,20 @@ export default function App() {
   const [inventory, setInventory] = useState([])
   const [orders, setOrders] = useState([])
   const [notifications, setNotifications] = useState([])
+  const [supplierOrders, setSupplierOrders] = useState([])
 
   const refreshAll = useCallback(async () => {
     try {
-      const [invRes, ordersRes, notifRes] = await Promise.all([
+      const [invRes, ordersRes, notifRes, supplierRes] = await Promise.all([
         fetch(`${API_BASE}/inventory`),
         fetch(`${API_BASE}/orders`),
         fetch(`${API_BASE}/notifications`),
+        fetch(`${API_BASE}/supplier/orders`),
       ])
       setInventory(await invRes.json())
       setOrders(await ordersRes.json())
       setNotifications(await notifRes.json())
+      setSupplierOrders(await supplierRes.json())
     } catch (err) {
       console.error('Failed to refresh dashboard data', err)
     }
@@ -41,6 +44,10 @@ export default function App() {
 
   useEffect(() => {
     refreshAll()
+    // Reorders move on their own (scheduled jobs), so poll our own backend every 15s.
+    // This only calls localhost:8080 - it never touches LegacySupply's quota.
+    const timer = setInterval(refreshAll, 15000)
+    return () => clearInterval(timer)
   }, [refreshAll])
 
   function addCartLine() {
@@ -223,6 +230,33 @@ export default function App() {
             ))}
           {orders.length === 0 && <p className="muted">No orders placed yet.</p>}
         </div>
+      </section>
+
+      <section className="panel panel--full">
+        <h2>Supplier reorders</h2>
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Reference</th>
+              <th>Product</th>
+              <th className="align-right">Units</th>
+              <th>Status</th>
+              <th>Last note</th>
+            </tr>
+          </thead>
+          <tbody>
+            {supplierOrders.map((r) => (
+              <tr key={r.id}>
+                <td className="mono">{r.buyerRef}</td>
+                <td className="mono">{r.productId}</td>
+                <td className="mono align-right">{r.units}</td>
+                <td className={`supplier-status supplier-status--${r.status.toLowerCase()}`}>{r.status}</td>
+                <td className="muted">{r.lastError ?? ''}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {supplierOrders.length === 0 && <p className="muted">No reorders yet.</p>}
       </section>
 
       <section className="panel panel--full">

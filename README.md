@@ -1,4 +1,33 @@
-# Lab 2: Extending the Modular Monolith
+# Order / Inventory Modular Monolith (Labs 1–3)
+
+## Lab 3: LegacySupply integration (Anti-Corruption Layer)
+
+The Lab 2 low-stock rule now places real purchase orders with **LegacySupply**, an external
+XML supplier system, through a new module: `edu.cit.carcueva.supplier`.
+
+- **Public:** `SupplierGateway` (takes our product ID + units needed), `ReorderResult`,
+  `SupplierOrderStatus`, `SupplierOrderView`, `ManualReorderRequest`. All of these use our own terms.
+- **Package-private:** XML (`XmlCodec`, `PurchaseOrderAck`), HTTP (`LegacySupplyHttp`), sessions
+  (`LegacySupplySession`), retries (`LegacySupplyClient`), translators (`StatusTranslator`,
+  `SupplierItemMapping`), persistence, scheduled jobs.
+- Order and Inventory import nothing from `supplier`. Deliveries reach Inventory through
+  `inventory.ReplenishmentReceivedEvent`.
+
+See **[INTEGRATION.md](INTEGRATION.md)** for the product mapping, session/error findings, Qty/Uom,
+and all resilience decisions, and **[REFLECTION.md](REFLECTION.md)** for the self-check reflection.
+
+**Extra environment variables for Lab 3** (never committed, see `backend/.env.example`):
+`LS_CLIENT_ID` (student ID) and `LS_API_KEY` (from the instructor).
+
+**New endpoints:** `GET /api/supplier/orders`, `POST /api/supplier/reorders` (manual test trigger,
+`{ "productId": "P100", "units": 13 }`).
+
+**Database:** `sql/schema.sql` recreates everything from scratch, including `supplier_orders`.
+`sql/lab3_supplier_orders.sql` adds only the new table without touching existing data.
+
+---
+
+## Lab 2: Extending the Modular Monolith
 
 Java Spring Boot (Order + Inventory + new Notification modules, in-process) + Supabase (Postgres) + React.
 
