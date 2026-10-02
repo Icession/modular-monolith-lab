@@ -8,17 +8,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import edu.cit.carcueva.inventory.InventoryService;
 
-/**
- * Order module's public service. Depends only on InventoryService - the
- * public interface - never on InventoryServiceImpl or InventoryRepository.
- *
- * The actual @Transactional reservation/persistence work lives in
- * OrderTransactionExecutor, a separate bean - see that class for why
- * (Spring proxy self-invocation).
- */
 @Service
 public class OrderService {
-
     private final InventoryService inventoryService;
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
@@ -35,21 +26,6 @@ public class OrderService {
         this.transactionExecutor = transactionExecutor;
     }
 
-    /**
-     * All-or-nothing multi-item order placement.
-     *
-     * Step 1 (here, no transaction) validates every line item against
-     * current stock without reserving anything - so a rejection never
-     * touches the database at all. Only if every item passes does step 2
-     * (in OrderTransactionExecutor) attempt to actually reserve them,
-     * inside one database transaction shared with the Order/order_items
-     * write. If a race condition causes a reservation to fail anyway
-     * (stock consumed by a concurrent order between validation and
-     * reservation), that transaction rolls back every reservation made
-     * earlier in this same order atomically - see the README reflection
-     * for what has to be rebuilt to keep that guarantee once Order and
-     * Inventory become two separate services over a network.
-     */
     public OrderResponse placeOrder(OrderRequest request) {
         List<OrderStockFailure> failures = validateStock(request.items());
 
@@ -63,6 +39,22 @@ public class OrderService {
             OrderStockFailure raceFailure = new OrderStockFailure(ex.failedProductId(), ex.getMessage());
             return transactionExecutor.persistRejectedOrder(request, List.of(raceFailure));
         }
+    }
+
+    public OrderResponse placeBackorder(OrderRequest request, String reason) {
+        return transactionExecutor.persistBackorder(request, reason);
+    }
+
+    public OrderResponse fulfilBackorder(Long orderId) {
+        try {
+            return transactionExecutor.fulfilBackorder(orderId);
+        } catch (OrderReservationException ex) {
+            return transactionExecutor.load(orderId);
+        }
+    }
+
+    public OrderResponse getOrder(Long orderId) {
+        return transactionExecutor.load(orderId);
     }
 
     private List<OrderStockFailure> validateStock(List<OrderItemRequest> items) {
@@ -110,8 +102,6 @@ public class OrderService {
 
         List<OrderItem> items = orderItemRepository.findByOrderId(orderId);
 
-        // Only a CONFIRMED order actually holds a reservation to give back -
-        // a REJECTED order never reserved any stock in the first place.
         if ("CONFIRMED".equals(order.getStatus())) {
             for (OrderItem item : items) {
                 inventoryService.restock(item.getProductId(), item.getQuantity());

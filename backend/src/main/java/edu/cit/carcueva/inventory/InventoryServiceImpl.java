@@ -8,18 +8,8 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/**
- * Package-private on purpose: this class is invisible outside
- * edu.cit.carcueva.inventory. Spring can still discover and wire it
- * as the InventoryService bean via component scanning + reflection,
- * but no code in the shop (Order) or notification module can import,
- * reference, or instantiate InventoryServiceImpl directly - the
- * compiler enforces that they can only ever hold a reference typed
- * as the public InventoryService interface.
- */
 @Service
 class InventoryServiceImpl implements InventoryService {
-
     private final InventoryRepository inventoryRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final int lowStockThreshold;
@@ -46,7 +36,7 @@ class InventoryServiceImpl implements InventoryService {
     @Override
     @Transactional
     public ReservationResult reserve(String productId, int quantity) {
-        Optional<InventoryItem> maybeItem = inventoryRepository.findById(productId);
+        Optional<InventoryItem> maybeItem = inventoryRepository.findForUpdate(productId);
 
         if (maybeItem.isEmpty()) {
             return ReservationResult.rejected("Product " + productId + " does not exist", null);
@@ -67,6 +57,8 @@ class InventoryServiceImpl implements InventoryService {
         item.setStock(item.getStock() - quantity);
         InventoryItem saved = inventoryRepository.save(item);
 
+        eventPublisher.publishEvent(new StockChangedEvent(saved.getProductId(), saved.getStock()));
+
         if (saved.getStock() < lowStockThreshold) {
             eventPublisher.publishEvent(
                     new LowStockEvent(saved.getProductId(), saved.getName(), saved.getStock(), lowStockThreshold));
@@ -78,7 +70,7 @@ class InventoryServiceImpl implements InventoryService {
     @Override
     @Transactional
     public ReservationResult restock(String productId, int quantity) {
-        Optional<InventoryItem> maybeItem = inventoryRepository.findById(productId);
+        Optional<InventoryItem> maybeItem = inventoryRepository.findForUpdate(productId);
 
         if (maybeItem.isEmpty()) {
             return ReservationResult.rejected("Product " + productId + " does not exist", null);
@@ -87,6 +79,8 @@ class InventoryServiceImpl implements InventoryService {
         InventoryItem item = maybeItem.get();
         item.setStock(item.getStock() + quantity);
         InventoryItem saved = inventoryRepository.save(item);
+
+        eventPublisher.publishEvent(new StockChangedEvent(saved.getProductId(), saved.getStock()));
 
         return ReservationResult.approved(toView(saved));
     }

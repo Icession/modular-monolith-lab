@@ -12,29 +12,25 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
-/**
- * One raw HTTP call to LegacySupply, with a hard timeout. No retries here
- * (LegacySupplyClient does that). Package-private.
- *
- * Returns the response body for 2xx; throws LegacySupplyException for
- * everything else - including timeouts, which is how "slow" becomes
- * "failed, try again" instead of hanging the app.
- */
+import edu.cit.carcueva.AppInstance;
+
 @Component
 class LegacySupplyHttp {
-
     private record RawResponse(int status, String body) {
     }
 
     private final RestClient restClient;
     private final String baseUrl;
+    private final AppInstance appInstance;
 
     LegacySupplyHttp(
+            AppInstance appInstance,
             @Value("${legacysupply.base-url}") String baseUrl,
             @Value("${legacysupply.timeout-ms:3000}") int timeoutMs) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(timeoutMs);
         factory.setReadTimeout(timeoutMs);
+        this.appInstance = appInstance;
         this.restClient = RestClient.builder().requestFactory(factory).build();
         this.baseUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
     }
@@ -46,10 +42,10 @@ class LegacySupplyHttp {
                     .uri(baseUrl + path)
                     .headers(h -> {
                         h.setAccept(List.of(MediaType.APPLICATION_XML));
+                        h.set("X-Client-Instance", appInstance.id());
                         headers.forEach(h::set);
                     });
             if (xmlBody != null) {
-                // Sent as raw bytes so the Content-Type stays exactly "application/xml"
                 spec = spec.contentType(MediaType.APPLICATION_XML)
                         .body(xmlBody.getBytes(StandardCharsets.UTF_8));
             }
@@ -57,7 +53,6 @@ class LegacySupplyHttp {
                     res.getStatusCode().value(),
                     new String(res.getBody().readAllBytes(), StandardCharsets.UTF_8)));
         } catch (RestClientException e) {
-            // Timeouts (SocketTimeoutException), refused connections, DNS failures...
             throw LegacySupplyException.transport(e.getMostSpecificCause());
         }
 

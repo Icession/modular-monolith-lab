@@ -1,4 +1,31 @@
-# Order / Inventory Modular Monolith (Labs 1–3)
+# Order / Inventory Modular Monolith (Labs 1–4)
+
+## Lab 4: Tiangge marketplace channel
+
+The shop now sells on **Tiangge**, an online marketplace, and runs unattended.
+A new module, `edu.cit.carcueva.channel`, does all Tiangge work:
+
+- **Go live:** a fresh instance ID (UUID) every start (`AppInstance`), sent as `X-Client-Instance` on
+  every Tiangge **and** LegacySupply call. First heartbeat, then listings (with LegacySupply SKUs),
+  then stock. Heartbeat every 30 s.
+- **Stock sync by events:** Inventory publishes `StockChangedEvent` on every change. `StockPublisher`
+  sends the new number after the transaction commits. No timer publishing.
+- **Orders:** `FeedPoller` reads the feed every 3 s from a cursor stored in `channel_cursor`.
+  Each Tiangge order becomes exactly one row in `channel_orders` (order ID = primary key) and exactly
+  one order in the Order module. Decision: ACCEPTED, BACKORDERED (a LegacySupply PO is already on its
+  way) or REJECTED.
+- **Cancellations:** cancelled through the Lab 2 `cancelOrder` (restocks), then confirmed to Tiangge.
+- **Backorders:** when a LegacySupply delivery arrives, waiting backorders are filled (ACCEPTED) or
+  cancelled if no restock is coming.
+- **Resilience:** 3 s timeouts, 3 tries with backoff, and every decision is saved before it's sent,
+  then retried until Tiangge takes it.
+
+Order and Inventory don't know Tiangge exists. Only `MarketplaceChannel` and `ChannelStatus` are public
+in the channel module. Status endpoint: `GET /api/channel/status`.
+
+**Database:** run `sql/lab4_channel.sql` (or rebuild everything with `sql/schema.sql`).
+
+---
 
 ## Lab 3: LegacySupply integration (Anti-Corruption Layer)
 

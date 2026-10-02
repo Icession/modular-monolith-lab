@@ -1,0 +1,14 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "java",
+      "name": "Run backend",
+      "request": "launch",
+      "mainClass": "edu.cit.carcueva.ModularMonolithApplication",
+      "projectName": "modular-monolith",
+      "cwd": "${workspaceFolder}/backend",
+      "envFile": "${workspaceFolder}/backend/.env"
+    }
+  ]
+}

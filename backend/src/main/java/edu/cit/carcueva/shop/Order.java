@@ -12,7 +12,6 @@ import jakarta.persistence.Table;
 @Entity
 @Table(name = "orders")
 public class Order {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "order_id")
@@ -28,7 +27,6 @@ public class Order {
     private Instant createdAt;
 
     protected Order() {
-        // JPA
     }
 
     public Order(String status, String reason) {
@@ -51,6 +49,10 @@ public class Order {
 
     public String getReason() {
         return reason;
+    }
+
+    public void setReason(String reason) {
+        this.reason = reason;
     }
 
     public Instant getCreatedAt() {

@@ -1,10 +1,16 @@
 package edu.cit.carcueva.inventory;
 
-import org.springframework.data.jpa.repository.JpaRepository;
+import java.util.Optional;
 
-/**
- * Package-private: only classes inside the inventory module may touch
- * the repository directly. The Order module never sees this.
- */
+import jakarta.persistence.LockModeType;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
 interface InventoryRepository extends JpaRepository<InventoryItem, String> {
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select i from InventoryItem i where i.productId = :productId")
+    Optional<InventoryItem> findForUpdate(@Param("productId") String productId);
 }

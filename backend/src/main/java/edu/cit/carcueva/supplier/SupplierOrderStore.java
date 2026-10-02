@@ -15,7 +15,6 @@ import edu.cit.carcueva.inventory.ReplenishmentReceivedEvent;
 
 @Component
 class SupplierOrderStore {
-
     static final Set<SupplierOrderStatus> OPEN = EnumSet.of(
             SupplierOrderStatus.PENDING, SupplierOrderStatus.SUBMITTED, SupplierOrderStatus.IN_PROGRESS,
             SupplierOrderStatus.SHIPPED, SupplierOrderStatus.NEEDS_ATTENTION);
@@ -23,6 +22,9 @@ class SupplierOrderStore {
     static final Set<SupplierOrderStatus> TRACKED = EnumSet.of(
             SupplierOrderStatus.SUBMITTED, SupplierOrderStatus.IN_PROGRESS,
             SupplierOrderStatus.SHIPPED, SupplierOrderStatus.NEEDS_ATTENTION);
+
+    static final Set<SupplierOrderStatus> IN_FLIGHT = EnumSet.of(
+            SupplierOrderStatus.SUBMITTED, SupplierOrderStatus.IN_PROGRESS, SupplierOrderStatus.SHIPPED);
 
     private final SupplierOrderRepository repository;
     private final ApplicationEventPublisher eventPublisher;
@@ -50,7 +52,6 @@ class SupplierOrderStore {
         repository.findById(id).ifPresent(o -> o.markSubmitted(poNumber, status, note));
     }
 
-    /** Still PENDING - the scheduled dispatcher will try again later. */
     @Transactional
     public void recordRetryableFailure(Long id, String error) {
         repository.findById(id).ifPresent(o -> o.recordError(error));
@@ -110,6 +111,11 @@ class SupplierOrderStore {
     @Transactional(readOnly = true)
     public List<SupplierOrder> ordersToTrack() {
         return repository.findTop10ByStatusInAndPoNumberIsNotNullOrderByUpdatedAtAsc(TRACKED);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean hasPurchaseOrderInFlight(String productId) {
+        return repository.existsByProductIdAndStatusInAndPoNumberIsNotNull(productId, IN_FLIGHT);
     }
 
     @Transactional(readOnly = true)

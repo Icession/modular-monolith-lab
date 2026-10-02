@@ -12,19 +12,8 @@ import edu.cit.carcueva.inventory.InventoryItemView;
 import edu.cit.carcueva.inventory.InventoryService;
 import edu.cit.carcueva.inventory.ReservationResult;
 
-/**
- * Holds the actual @Transactional work for placing an order. Split out
- * from OrderService into its own Spring bean deliberately: calling a
- * @Transactional method on `this` from another method in the SAME class
- * bypasses Spring's proxy (self-invocation), so the transaction boundary
- * would silently not apply. Putting these methods on a separate
- * collaborator bean that OrderService calls through means the proxy is
- * actually in the call path, and @Transactional (and its REQUIRES_NEW
- * variant) really do take effect.
- */
 @Component
 class OrderTransactionExecutor {
-
     private final InventoryService inventoryService;
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
@@ -41,15 +30,6 @@ class OrderTransactionExecutor {
         this.eventPublisher = eventPublisher;
     }
 
-    /**
-     * Reserves every item and writes the order + order_items in one
-     * shared transaction. If any reserve() call fails (a race condition,
-     * since the caller already pre-validated stock), the exception rolls
-     * back every reservation made earlier in this same loop AND the not-
-     * yet-flushed order writes, atomically, because Order's writes and
-     * Inventory's reserve() calls share one database transaction by
-     * default @Transactional propagation (REQUIRED) in this monolith.
-     */
     @Transactional
     OrderResponse reserveAndConfirm(List<OrderItemRequest> items) {
         List<InventoryItemView> updatedInventory = new ArrayList<>();
@@ -77,13 +57,6 @@ class OrderTransactionExecutor {
                 itemResults, updatedInventory, order.getCreatedAt());
     }
 
-    /**
-     * Runs in its OWN new transaction (REQUIRES_NEW), independent of
-     * whatever transaction the caller might already be in. This matters
-     * for the race-condition path: reserveAndConfirm's transaction has
-     * already rolled back by the time this runs, and we still need to
-     * successfully persist the REJECTED order row.
-     */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     OrderResponse persistRejectedOrder(OrderRequest request, List<OrderStockFailure> failures) {
         String combinedReason = failures.stream()
@@ -110,5 +83,63 @@ class OrderTransactionExecutor {
 
         return new OrderResponse(order.getOrderId(), "REJECTED", combinedReason,
                 itemResults, List.of(), order.getCreatedAt());
+    }
+
+    @Transactional
+    OrderResponse persistBackorder(OrderRequest request, String reason) {
+        Order order = orderRepository.save(new Order("BACKORDERED", reason));
+
+        List<OrderItemResult> itemResults = new ArrayList<>();
+        for (OrderItemRequest item : request.items()) {
+            orderItemRepository.save(new OrderItem(order.getOrderId(), item.productId(), item.quantity()));
+            itemResults.add(new OrderItemResult(item.productId(), item.quantity(), "BACKORDERED", null));
+        }
+
+        return new OrderResponse(order.getOrderId(), "BACKORDERED", reason,
+                itemResults, List.of(), order.getCreatedAt());
+    }
+
+    @Transactional
+    OrderResponse fulfilBackorder(Long orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new OrderNotFoundException(orderId));
+        List<OrderItem> items = orderItemRepository.findByOrderId(orderId);
+
+        if (!"BACKORDERED".equals(order.getStatus())) {
+            return toResponse(order, items, List.of());
+        }
+
+        List<InventoryItemView> updatedInventory = new ArrayList<>();
+        for (OrderItem item : items) {
+            ReservationResult result = inventoryService.reserve(item.getProductId(), item.getQuantity());
+            if (!result.success()) {
+                throw new OrderReservationException(item.getProductId(), result.reason());
+            }
+            updatedInventory.add(result.inventory());
+        }
+
+        order.setStatus("CONFIRMED");
+        order.setReason("Backorder filled after supplier delivery");
+        Order saved = orderRepository.save(order);
+
+        eventPublisher.publishEvent(new OrderPlacedEvent(saved.getOrderId(), "CONFIRMED",
+                "Order " + saved.getOrderId() + " confirmed (backorder filled)"));
+
+        return toResponse(saved, items, updatedInventory);
+    }
+
+    @Transactional(readOnly = true)
+    OrderResponse load(Long orderId) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new OrderNotFoundException(orderId));
+        return toResponse(order, orderItemRepository.findByOrderId(orderId), List.of());
+    }
+
+    private OrderResponse toResponse(Order order, List<OrderItem> items, List<InventoryItemView> inventory) {
+        List<OrderItemResult> itemResults = items.stream()
+                .map(oi -> new OrderItemResult(oi.getProductId(), oi.getQuantity(), order.getStatus(), null))
+                .toList();
+        return new OrderResponse(order.getOrderId(), order.getStatus(), order.getReason(),
+                itemResults, inventory, order.getCreatedAt());
     }
 }

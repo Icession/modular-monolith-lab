@@ -8,12 +8,9 @@ import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 interface SupplierOrderRepository extends JpaRepository<SupplierOrder, Long> {
-
-    /** PENDING reorders nobody has touched for a while - ready to (re)send. */
     List<SupplierOrder> findTop5ByStatusAndUpdatedAtBeforeOrderByCreatedAtAsc(
             SupplierOrderStatus status, Instant untouchedSince);
 
-    /** Orders the supplier knows about that haven't finished yet - to poll for status. */
     List<SupplierOrder> findTop10ByStatusInAndPoNumberIsNotNullOrderByUpdatedAtAsc(
             Collection<SupplierOrderStatus> statuses);
 
@@ -21,4 +18,7 @@ interface SupplierOrderRepository extends JpaRepository<SupplierOrder, Long> {
             String productId, Collection<SupplierOrderStatus> statuses);
 
     List<SupplierOrder> findAllByOrderByCreatedAtDesc();
+
+    boolean existsByProductIdAndStatusInAndPoNumberIsNotNull(
+            String productId, Collection<SupplierOrderStatus> statuses);
 }

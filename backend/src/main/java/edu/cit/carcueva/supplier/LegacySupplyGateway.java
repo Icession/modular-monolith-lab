@@ -9,17 +9,8 @@ import org.springframework.stereotype.Service;
 
 import edu.cit.carcueva.supplier.SupplierItemMapping.SupplierItem;
 
-/**
- * The Anti-Corruption Layer itself: implements our SupplierGateway using
- * LegacySupply. Package-private - nobody outside this module can even name
- * this class; they only ever see SupplierGateway.
- *
- * `synchronized` so the async low-stock listener and the scheduled dispatcher
- * can never send the same reorder at the same moment.
- */
 @Service
 class LegacySupplyGateway implements SupplierGateway {
-
     private static final Logger log = LoggerFactory.getLogger(LegacySupplyGateway.class);
 
     private final SupplierItemMapping mapping;
@@ -67,6 +58,16 @@ class LegacySupplyGateway implements SupplierGateway {
     }
 
     @Override
+    public Optional<String> supplierSkuFor(String productId) {
+        return mapping.find(productId).map(SupplierItem::supplierSku);
+    }
+
+    @Override
+    public boolean hasPurchaseOrderInFlight(String productId) {
+        return store.hasPurchaseOrderInFlight(productId);
+    }
+
+    @Override
     public List<SupplierOrderView> listOrders() {
         return store.all().stream().map(SupplierOrderView::from).toList();
     }
@@ -110,14 +111,12 @@ class LegacySupplyGateway implements SupplierGateway {
 
         } catch (LegacySupplyException e) {
             switch (e.kind()) {
-                // Supplier down / slow / over quota / session trouble / bad config:
-                // keep it PENDING - never lose a reorder.
                 case TRANSIENT, AUTH, RATE_LIMITED, CREDENTIALS -> {
                     store.recordRetryableFailure(id, e.describe());
                     log.warn("[Reorder] {} kept PENDING: {}", order.getBuyerRef(), e.describe());
                 }
                 case CONFLICT -> store.markNeedsAttention(id, e.describe());
-                default -> store.markFailed(id, e.describe()); // REJECTED, NOT_FOUND
+                default -> store.markFailed(id, e.describe());
             }
         }
         return store.find(id).orElseThrow();
