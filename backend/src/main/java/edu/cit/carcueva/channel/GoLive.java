@@ -28,9 +28,11 @@ class GoLive {
     private final InventoryService inventoryService;
     private final SupplierGateway supplierGateway;
     private final AppInstance appInstance;
+    private final TianggeReporter reporter;
 
     GoLive(TianggeClient client, ChannelState state, StockPublisher stockPublisher, ListedProducts listed,
-           InventoryService inventoryService, SupplierGateway supplierGateway, AppInstance appInstance) {
+           InventoryService inventoryService, SupplierGateway supplierGateway, AppInstance appInstance,
+           TianggeReporter reporter) {
         this.client = client;
         this.state = state;
         this.stockPublisher = stockPublisher;
@@ -38,6 +40,7 @@ class GoLive {
         this.inventoryService = inventoryService;
         this.supplierGateway = supplierGateway;
         this.appInstance = appInstance;
+        this.reporter = reporter;
     }
 
     @Async
@@ -55,6 +58,7 @@ class GoLive {
                 state.markListingsPublished();
                 log.info("[Channel] Published {} listings: {}", listings.size(), listings);
 
+                reportLeftoversBeforeStock();
                 stockPublisher.publishAll();
                 state.markLive();
                 log.info("[Channel] Shop is LIVE - reading the order feed now");
@@ -65,6 +69,14 @@ class GoLive {
                 log.error("[Channel] Go-live failed, retrying in 10s", e);
                 sleep(10000);
             }
+        }
+    }
+
+    private void reportLeftoversBeforeStock() {
+        try {
+            reporter.retryUnreported();
+        } catch (RuntimeException e) {
+            log.warn("[Channel] Could not send leftover updates before publishing stock: {}", e.toString());
         }
     }
 

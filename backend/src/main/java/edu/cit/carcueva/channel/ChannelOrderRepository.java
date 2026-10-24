@@ -16,6 +16,12 @@ interface ChannelOrderRepository extends JpaRepository<ChannelOrder, String> {
 
     List<ChannelOrder> findTop20ByStateAndCreatedAtBeforeOrderByCreatedAtAsc(String state, Instant before);
 
+    List<ChannelOrder> findByDecisionAndDecisionReportedAtIsNull(String decision);
+
+    List<ChannelOrder> findByResolutionAndResolutionReportedAtIsNull(String resolution);
+
+    List<ChannelOrder> findByCancelRestockedTrueAndCancelConfirmedAtIsNull();
+
     long countByState(String state);
 
     long countByDecisionIsNotNullAndDecisionReportedAtIsNull();

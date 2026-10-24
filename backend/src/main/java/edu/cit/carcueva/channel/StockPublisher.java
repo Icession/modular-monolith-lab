@@ -11,6 +11,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import jakarta.annotation.PreDestroy;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -20,7 +22,6 @@ import org.springframework.transaction.event.TransactionalEventListener;
 
 import edu.cit.carcueva.inventory.InventoryService;
 import edu.cit.carcueva.inventory.StockChangedEvent;
-import jakarta.annotation.PreDestroy;
 
 @Component
 class StockPublisher {
@@ -40,12 +41,15 @@ class StockPublisher {
     private final InventoryService inventoryService;
     private final ListedProducts listed;
     private final ChannelState state;
+    private final ChannelOrderRepository orders;
 
-    StockPublisher(TianggeClient client, InventoryService inventoryService, ListedProducts listed, ChannelState state) {
+    StockPublisher(TianggeClient client, InventoryService inventoryService, ListedProducts listed, ChannelState state,
+                   ChannelOrderRepository orders) {
         this.client = client;
         this.inventoryService = inventoryService;
         this.listed = listed;
         this.state = state;
+        this.orders = orders;
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
@@ -105,9 +109,14 @@ class StockPublisher {
         List<String> batch = new ArrayList<>(pending);
         pending.removeAll(batch);
 
+        Map<String, Integer> notYetKnown = notYetKnownToTiangge();
         Map<String, Integer> available = new LinkedHashMap<>();
         for (String productId : batch) {
-            inventoryService.getItem(productId).ifPresent(item -> available.put(productId, item.stock()));
+            inventoryService.getItem(productId).ifPresent(item ->
+                    available.put(productId, Math.max(0, item.stock() + notYetKnown.getOrDefault(productId, 0))));
+        }
+        if (notYetKnown.values().stream().anyMatch(v -> v != 0)) {
+            log.info("[Stock] Adjusting for updates Tiangge has not received yet: {}", notYetKnown);
         }
         if (available.isEmpty()) {
             return;
@@ -126,6 +135,17 @@ class StockPublisher {
             }
             log.warn("[Stock] Could not publish {} - will retry: {}", available, e.describe());
         }
+    }
+
+    private Map<String, Integer> notYetKnownToTiangge() {
+        Map<String, Integer> adjust = new LinkedHashMap<>();
+        orders.findByDecisionAndDecisionReportedAtIsNull("ACCEPTED")
+                .forEach(row -> FeedTranslator.decodeLines(row.getLines()).forEach((sku, qty) -> adjust.merge(sku, qty, Integer::sum)));
+        orders.findByResolutionAndResolutionReportedAtIsNull("ACCEPTED")
+                .forEach(row -> FeedTranslator.decodeLines(row.getLines()).forEach((sku, qty) -> adjust.merge(sku, qty, Integer::sum)));
+        orders.findByCancelRestockedTrueAndCancelConfirmedAtIsNull()
+                .forEach(row -> FeedTranslator.decodeLines(row.getLines()).forEach((sku, qty) -> adjust.merge(sku, -qty, Integer::sum)));
+        return adjust;
     }
 
     @PreDestroy

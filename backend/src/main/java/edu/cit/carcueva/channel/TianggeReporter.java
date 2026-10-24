@@ -66,6 +66,7 @@ class TianggeReporter {
             pool.submit(() -> {
                 try {
                     repository.findById(report.orderId())
+                            .filter(row -> stillPending(row, report.kind()))
                             .map(row -> send(toCall(row, report.kind())))
                             .ifPresent(result -> apply(report, result));
                 } catch (RuntimeException e) {
@@ -91,7 +92,9 @@ class TianggeReporter {
             if (!inFlight.add(key)) {
                 continue;
             }
-            Optional<Call> call = repository.findById(report.orderId()).map(row -> toCall(row, report.kind()));
+            Optional<Call> call = repository.findById(report.orderId())
+                    .filter(row -> stillPending(row, report.kind()))
+                    .map(row -> toCall(row, report.kind()));
             if (call.isEmpty()) {
                 inFlight.remove(key);
                 continue;
@@ -111,6 +114,14 @@ class TianggeReporter {
                 inFlight.remove(key(report));
             }
         });
+    }
+
+    private static boolean stillPending(ChannelOrder row, Kind kind) {
+        return switch (kind) {
+            case DECISION -> row.getDecision() != null && row.getDecisionReportedAt() == null;
+            case RESOLUTION -> row.getResolution() != null && row.getResolutionReportedAt() == null;
+            case CANCELLATION -> row.getCancelRequestedAt() != null && row.getCancelConfirmedAt() == null;
+        };
     }
 
     private static String key(Report report) {
